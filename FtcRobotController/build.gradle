@@ -11,10 +11,10 @@ android {
     }
     defaultConfig {
         minSdkVersion 16
-        targetSdkVersion 19
+        targetSdkVersion 22
     }
-    compileSdkVersion 19
-    buildToolsVersion '21.1.2'
+    compileSdkVersion 22
+    buildToolsVersion '24.0.1'
 }
 
 buildscript {
@@ -22,7 +22,7 @@ buildscript {
         jcenter()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:2.1.0'
+        classpath 'com.android.tools.build:gradle:2.1.2'
     }
 }
 
@@ -42,7 +42,6 @@ allprojects {
 }
 
 dependencies {
-    compile files('libs/android-support-v4.jar')
     compile(name: 'RobotCore-release', ext: 'aar')
     compile(name: 'Hardware-release', ext: 'aar')
     compile(name: 'FtcCommon-release', ext: 'aar')
