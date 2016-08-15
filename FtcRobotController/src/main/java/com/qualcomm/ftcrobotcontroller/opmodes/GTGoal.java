@@ -17,7 +17,7 @@ public class GTGoal extends OpMode {
 
     //Constants
     double wheelDiameter = 9.15; //cm
-    double pivotRadius = 19.5; //ish cm
+    double diffDriveRadius = 19.5; //ish cm
 
     //Declare robot variables:
     DcMotor leftMotor;
@@ -32,9 +32,7 @@ public class GTGoal extends OpMode {
     @Override
     public void init() {
         path = new ArrayList<>();
-        path.add(new Coord(230,0));
-        path.add(new Coord(230,250));
-        path.add(new Coord(350,250));
+        path.add(new Coord(100,0));
         leftMotor = hardwareMap.dcMotor.get("L");
         rightMotor = hardwareMap.dcMotor.get("R");
         rightMotor.setDirection(DcMotor.Direction.REVERSE);
@@ -48,6 +46,11 @@ public class GTGoal extends OpMode {
         heading = 0;
     }
 
+    //Stuff to do, switch over to only storing wheel positions. Add position() and heading() functions that
+    //deduce central position and heading from the two wheel positions. Add universal update function.
+    //Update wheel positions individually based off of heading (be sure to store this in a variable beforehand)
+    //and their respective encoder ticks. Move to a proportional or PID controller for movement, and make
+    //driving and heading adjustments one in the same.
     @Override
     public void loop() {
         if (!path.isEmpty()) {
@@ -57,6 +60,7 @@ public class GTGoal extends OpMode {
         }
     }
 
+    /*
     public void updatePosition(int deltaL, int deltaR) {
         int deltaTicks = Math.round((deltaL + deltaR) / 2);
         double deltaRots = deltaTicks / 1120.0;
@@ -76,33 +80,70 @@ public class GTGoal extends OpMode {
             heading = heading - (deltaDistance / pivotRadius);
         }
     }
+    */
+
+    //DRY is weeping at the sight of this ungodly mess...
+    private void updateState(int deltaL, int deltaR) {
+        telemetry.addData("deltaL", deltaL);
+        telemetry.addData("deltaR", deltaR);
+        Coord lPos = new Coord(position.X + (Math.cos(heading + (Math.PI/2)) * diffDriveRadius), position.Y + (Math.sin(heading + (Math.PI/2)) * diffDriveRadius));
+        Coord rPos = new Coord(position.X + (Math.cos(heading - (Math.PI/2)) * diffDriveRadius), position.Y + (Math.sin(heading - (Math.PI/2)) * diffDriveRadius));
+        double lDistance = (deltaL / 1120.0) * (wheelDiameter * Math.PI);
+        Tuple deltaLPos = new Tuple(Math.cos(heading) * lDistance, Math.sin(heading) * lDistance);
+        double rDistance = (deltaR / 1120.0) * (wheelDiameter * Math.PI);
+        Tuple deltaRPos = new Tuple(Math.cos(heading) * rDistance, Math.sin(heading) * rDistance);
+        lPos = new Coord(lPos.sum(deltaLPos));
+        rPos = new Coord(rPos.sum(deltaRPos));
+        telemetry.addData("Delta Position L:", "(" + deltaLPos.X + "," + deltaLPos.Y + ")");
+        telemetry.addData("Delta Position R:", "(" + deltaRPos.X + "," + deltaRPos.Y + ")");
+        telemetry.addData("Position L:", "(" + lPos.X + "," + lPos.Y + ")");
+        telemetry.addData("Position R:", "(" + rPos.X + "," + rPos.Y + ")");
+        position = new Coord(lPos.sum(rPos).scale(1/2));
+        telemetry.addData("Position:", "(" + position.X + "," + position.Y + ")");
+        Tuple wheelDiff = lPos.difference(rPos);
+        double dirtyHeading = Math.atan2(wheelDiff.X,wheelDiff.Y);
+        heading = (heading + (dirtyHeading > 0 ? dirtyHeading : dirtyHeading + 2 * Math.PI)) % (2 * Math.PI);
+        telemetry.addData("Heading:",heading);
+    }
+
+    private double headingError(double currentHeading, double targetHeading) {
+        double error = targetHeading - currentHeading;
+        if (error > Math.PI) {
+            return error - (2 * Math.PI);
+        }
+        if (error < -Math.PI) {
+            return error + (2 * Math.PI);
+        }
+        return error;
+    }
 
     private boolean moveTo(Coord coord) {
         int leftEnc = leftMotor.getCurrentPosition();
         int rightEnc = rightMotor.getCurrentPosition();
         if (position.distanceTo(coord) > 0.5) {
-            if (Math.abs(position.headingTo(coord) - heading) > 0.05) {
-                if (Math.abs(position.headingTo(coord) - heading) < 0.1) {
-                    if (position.headingTo(coord) > heading) {
+            double hError = headingError(heading,position.headingTo(coord));
+            if (Math.abs(hError) > 0.05) {
+                if (Math.abs(hError) < 0.1) {
+                    if (hError > 0) {
                         leftMotor.setPower(0.3);
                         rightMotor.setPower(0.4);
                     }
-                    if (position.headingTo(coord) < heading) {
+                    if (hError < 0) {
                         leftMotor.setPower(0.4);
                         rightMotor.setPower(0.3);
                     }
                 }
                 else {
-                    if (position.headingTo(coord) > heading) {
+                    if (hError > 0) {
                         leftMotor.setPower(-0.4);
                         rightMotor.setPower(0.4);
                     }
-                    if (position.headingTo(coord) < heading) {
+                    if (hError < 0) {
                         leftMotor.setPower(0.4);
                         rightMotor.setPower(-0.4);
                     }
                 }
-                updateHeading(leftEnc-lastEncL,rightEnc-lastEncR);
+                updateState(leftEnc-lastEncL,rightEnc-lastEncR);
                 lastEncL = leftEnc;
                 lastEncR = rightEnc;
                 return false;
@@ -110,7 +151,7 @@ public class GTGoal extends OpMode {
             else {
                 leftMotor.setPower(0.4);
                 rightMotor.setPower(0.4);
-                updatePosition(leftEnc-lastEncL,rightEnc-lastEncR);
+                updateState(leftEnc-lastEncL,rightEnc-lastEncR);
                 lastEncL = leftEnc;
                 lastEncR = rightEnc;
                 return false;
@@ -125,8 +166,8 @@ public class GTGoal extends OpMode {
 }
 
 class Tuple {
-    public double X;
-    public double Y;
+    public final double X;
+    public final double Y;
 
     public Tuple(double X, double Y) {
         this.X = X;
@@ -142,6 +183,12 @@ class Tuple {
     public Tuple difference(Tuple tuple) {
         double newX = this.X - tuple.X;
         double newY = this.Y - tuple.Y;
+        return new Tuple(newX,newY);
+    }
+
+    public Tuple scale(double scalar) {
+        double newX = this.X * scalar;
+        double newY = this.Y * scalar;
         return new Tuple(newX,newY);
     }
 }
@@ -162,6 +209,7 @@ class Coord extends Tuple {
 
     public double headingTo(Coord coord) {
         Tuple vector = coord.difference(this);
-        return Math.atan2(vector.Y,vector.X);
+        double angle = Math.atan2(vector.Y,vector.X);
+        return (angle > 0 ? angle : angle + 2 * Math.PI);
     }
 }
