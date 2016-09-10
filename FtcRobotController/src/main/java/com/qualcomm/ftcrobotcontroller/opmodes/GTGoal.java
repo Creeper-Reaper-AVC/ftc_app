@@ -24,15 +24,15 @@ public class GTGoal extends OpMode {
     DcMotor rightMotor;
     int lastEncL;
     int lastEncR;
-    Coord position;
+    Tuple position;
     double heading; //Radians
 
-    ArrayList<Coord> path;
+    ArrayList<Tuple> path;
 
     @Override
     public void init() {
         path = new ArrayList<>();
-        path.add(new Coord(100,0));
+        path.add(new Tuple(100,0));
         leftMotor = hardwareMap.dcMotor.get("L");
         rightMotor = hardwareMap.dcMotor.get("R");
         rightMotor.setDirection(DcMotor.Direction.REVERSE);
@@ -42,7 +42,7 @@ public class GTGoal extends OpMode {
         rightMotor.setMode(DcMotorController.RunMode.RUN_USING_ENCODERS);
         lastEncL = leftMotor.getCurrentPosition();
         lastEncR = rightMotor.getCurrentPosition();
-        position = new Coord(0,0);
+        position = new Tuple(0,0);
         heading = 0;
     }
 
@@ -86,19 +86,20 @@ public class GTGoal extends OpMode {
     private void updateState(int deltaL, int deltaR) {
         telemetry.addData("deltaL", deltaL);
         telemetry.addData("deltaR", deltaR);
-        Coord lPos = new Coord(position.X + (Math.cos(heading + (Math.PI/2)) * diffDriveRadius), position.Y + (Math.sin(heading + (Math.PI/2)) * diffDriveRadius));
-        Coord rPos = new Coord(position.X + (Math.cos(heading - (Math.PI/2)) * diffDriveRadius), position.Y + (Math.sin(heading - (Math.PI/2)) * diffDriveRadius));
+        Tuple lPos = new Tuple(position.X + (Math.cos(heading + (Math.PI/2)) * diffDriveRadius), position.Y + (Math.sin(heading + (Math.PI/2)) * diffDriveRadius));
+        Tuple rPos = new Tuple(position.X + (Math.cos(heading - (Math.PI/2)) * diffDriveRadius), position.Y + (Math.sin(heading - (Math.PI/2)) * diffDriveRadius));
         double lDistance = (deltaL / 1120.0) * (wheelDiameter * Math.PI);
         Tuple deltaLPos = new Tuple(Math.cos(heading) * lDistance, Math.sin(heading) * lDistance);
         double rDistance = (deltaR / 1120.0) * (wheelDiameter * Math.PI);
         Tuple deltaRPos = new Tuple(Math.cos(heading) * rDistance, Math.sin(heading) * rDistance);
-        lPos = new Coord(lPos.sum(deltaLPos));
-        rPos = new Coord(rPos.sum(deltaRPos));
+        lPos = lPos.sum(deltaLPos);
+        rPos = rPos.sum(deltaRPos);
         telemetry.addData("Delta Position L:", "(" + deltaLPos.X + "," + deltaLPos.Y + ")");
         telemetry.addData("Delta Position R:", "(" + deltaRPos.X + "," + deltaRPos.Y + ")");
         telemetry.addData("Position L:", "(" + lPos.X + "," + lPos.Y + ")");
         telemetry.addData("Position R:", "(" + rPos.X + "," + rPos.Y + ")");
-        position = new Coord(lPos.sum(rPos).scale(1/2));
+        position.X += (lPos.X + rPos.X) / 2;
+        position.Y += (lPos.Y + rPos.Y) / 2;
         telemetry.addData("Position:", "(" + position.X + "," + position.Y + ")");
         Tuple wheelDiff = lPos.difference(rPos);
         double dirtyHeading = Math.atan2(wheelDiff.X,wheelDiff.Y);
@@ -117,10 +118,17 @@ public class GTGoal extends OpMode {
         return error;
     }
 
-    private boolean moveTo(Coord coord) {
+    private boolean moveTo(Tuple coord) {
         int leftEnc = leftMotor.getCurrentPosition();
         int rightEnc = rightMotor.getCurrentPosition();
         if (position.distanceTo(coord) > 0.5) {
+            leftMotor.setPower(0.1);
+            rightMotor.setPower(0.1);
+            updateState(leftEnc-lastEncL,rightEnc-lastEncR);
+            lastEncL = leftEnc;
+            lastEncR = rightEnc;
+            return false;
+            /*
             double hError = headingError(heading,position.headingTo(coord));
             if (Math.abs(hError) > 0.05) {
                 if (Math.abs(hError) < 0.1) {
@@ -155,7 +163,7 @@ public class GTGoal extends OpMode {
                 lastEncL = leftEnc;
                 lastEncR = rightEnc;
                 return false;
-            }
+            }*/
         }
         else {
             leftMotor.setPower(0);
@@ -165,6 +173,47 @@ public class GTGoal extends OpMode {
     }
 }
 
+class Tuple {
+    public double X;
+    public double Y;
+
+    public Tuple(double X, double Y) {
+        this.X = X;
+        this.Y = Y;
+    }
+
+    public Tuple sum(Tuple tuple) {
+        double newX = this.X + tuple.X;
+        double newY = this.Y + tuple.Y;
+        return new Tuple(newX,newY);
+    }
+
+    public Tuple difference(Tuple tuple) {
+        double newX = this.X - tuple.X;
+        double newY = this.Y - tuple.Y;
+        return new Tuple(newX,newY);
+    }
+    /*
+    public Tuple scale(double scalar) {
+        double newX = this.X * scalar;
+        double newY = this.Y * scalar;
+        return new Tuple(newX,newY);
+    }
+    */
+    public double distanceTo(Tuple tuple) {
+        Tuple vector = tuple.difference(this);
+        return Math.sqrt(Math.pow(vector.X, 2) + Math.pow(vector.Y, 2));
+    }
+
+    public double headingTo(Tuple tuple) {
+        Tuple vector = tuple.difference(this);
+        double angle = Math.atan2(vector.Y, vector.X);
+        return (angle > 0 ? angle : angle + 2 * Math.PI);
+    }
+}
+
+
+/*
 class Tuple {
     public final double X;
     public final double Y;
@@ -212,4 +261,4 @@ class Coord extends Tuple {
         double angle = Math.atan2(vector.Y,vector.X);
         return (angle > 0 ? angle : angle + 2 * Math.PI);
     }
-}
+}*/
